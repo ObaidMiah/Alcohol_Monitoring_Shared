@@ -44,15 +44,12 @@ export function getReadingResult(reading: Reading): ReadingResult {
   return reading.bac > BAC_DEFAULT_THRESHOLD ? "fail" : "pass";
 }
 
-const BAC_VISIBLE_ROLES: ReadonlySet<Role> = new Set([
-  "officer",
-  "supervisor",
-  "org_admin",
-  "system_admin",
-]);
-
+/**
+ * Only system_admin can see raw BAC values.
+ * All other roles see compliant/non-compliant results only.
+ */
 export function canViewBAC(role: Role): boolean {
-  return BAC_VISIBLE_ROLES.has(role);
+  return role === "system_admin";
 }
 
 export function isCompliant(status: SubjectStatus): boolean {
