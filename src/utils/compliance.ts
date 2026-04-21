@@ -11,7 +11,7 @@ export function deriveSubjectStatus(
 ): SubjectStatus {
   if (!latestReading) return "offline";
 
-  const age = Date.now() - new Date(latestReading.recorded_at).getTime();
+  const age = Date.now() - new Date(latestReading.recordedAt).getTime();
 
   // No reading in last 2 hours → offline
   if (age > 2 * 60 * 60 * 1000) return "offline";
@@ -19,18 +19,18 @@ export function deriveSubjectStatus(
   // Tamper event in last hour OR BAC above threshold → violation
   const recentTamper = recentEvents.some(
     (e) =>
-      e.event_type === "tamper_ir_detected" &&
-      Date.now() - new Date(e.recorded_at).getTime() < 60 * 60 * 1000,
+      e.eventType === "tamper_ir_detected" &&
+      Date.now() - new Date(e.recordedAt).getTime() < 60 * 60 * 1000,
   );
 
-  if (recentTamper || (latestReading.ethanol_bac ?? 0) > BAC_DEFAULT_THRESHOLD) {
+  if (recentTamper || (latestReading.bac ?? 0) > BAC_DEFAULT_THRESHOLD) {
     return "violation";
   }
 
   // Battery low OR wrist off OR missed reading window → attention
   if (
-    (latestReading.battery_pct ?? 100) <= 20 ||
-    latestReading.wrist_on === false ||
+    (latestReading.batteryPercent ?? 100) <= 20 ||
+    latestReading.wristOn === false ||
     age > READING_INTERVAL_MINS * 60 * 1000 * 1.5
   ) {
     return "attention";
@@ -40,8 +40,8 @@ export function deriveSubjectStatus(
 }
 
 export function getReadingResult(reading: Reading): ReadingResult {
-  if (reading.ethanol_bac == null) return "no_data";
-  return reading.ethanol_bac > BAC_DEFAULT_THRESHOLD ? "fail" : "pass";
+  if (reading.bac == null) return "no_data";
+  return reading.bac > BAC_DEFAULT_THRESHOLD ? "fail" : "pass";
 }
 
 const BAC_VISIBLE_ROLES: ReadonlySet<Role> = new Set([

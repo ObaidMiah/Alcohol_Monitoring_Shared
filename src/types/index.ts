@@ -115,30 +115,30 @@ export interface DeviceAssignment {
 
 export interface Reading {
   readonly id: number;
-  readonly subject_id: string;
-  readonly device_id: string;
-  readonly ethanol_bac?: number;
-  readonly skin_temp_c?: number;
-  readonly motion_mg?: number;
-  readonly battery_pct?: number;
-  readonly wrist_on: boolean;
-  readonly gps_lat?: number;
-  readonly gps_lng?: number;
-  readonly gps_fix_status?: GpsFixStatus;
-  readonly gps_accuracy_m?: number;
-  readonly transmission_path?: TransmissionPath;
-  readonly recorded_at: string;
-  readonly received_at: string;
+  readonly subjectId: string;
+  readonly deviceId: string;
+  readonly bac?: number;
+  readonly skinTempC?: number;
+  readonly motionMg?: number;
+  readonly batteryPercent?: number;
+  readonly wristOn: boolean;
+  readonly gpsLat?: number;
+  readonly gpsLng?: number;
+  readonly gpsFixStatus?: GpsFixStatus;
+  readonly gpsAccuracyM?: number;
+  readonly transmissionPath?: TransmissionPath;
+  readonly recordedAt: string;
+  readonly receivedAt: string;
 }
 
 export interface Event {
   readonly id: string;
-  readonly subject_id: string;
-  readonly device_id?: string;
-  readonly event_type: EventType;
+  readonly subjectId: string;
+  readonly deviceId?: string;
+  readonly eventType: EventType;
   readonly metadata?: Record<string, unknown>;
-  readonly recorded_at: string;
-  readonly received_at: string;
+  readonly recordedAt: string;
+  readonly receivedAt: string;
 }
 
 export interface OrgSettings {
@@ -313,13 +313,13 @@ export interface GeoJSONFeatureCollection<
 }
 
 export interface ReadingPointProperties {
-  readonly recorded_at: string;
+  readonly recordedAt: string;
   readonly result: ReadingResult;
-  readonly battery_pct?: number;
-  readonly wrist_on: boolean;
-  readonly gps_accuracy_m?: number;
-  readonly transmission_path?: TransmissionPath;
-  readonly ethanol_bac?: number;
+  readonly batteryPercent?: number;
+  readonly wristOn: boolean;
+  readonly gpsAccuracyM?: number;
+  readonly transmissionPath?: TransmissionPath;
+  readonly bac?: number;
 }
 
 // ── Error Types ─────────────────────────────────────────────────
