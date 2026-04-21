@@ -8,6 +8,12 @@ export type DeviceStatus = "in_stock" | "active" | "in_repair" | "decommissioned
 
 export type SubjectStatus = "compliant" | "attention" | "violation" | "offline";
 
+export type GpsFixStatus = "acquired" | "searching" | "lost";
+
+export type TransmissionPath = "ble" | "wifi" | "cellular";
+
+export type ReadingResult = "pass" | "fail" | "no_data";
+
 export type EventType =
   | "tamper_ir_detected"
   | "tamper_ir_cleared"
@@ -116,8 +122,11 @@ export interface Reading {
   readonly motion_mg?: number;
   readonly battery_pct?: number;
   readonly wrist_on: boolean;
-  readonly latitude?: number;
-  readonly longitude?: number;
+  readonly gps_lat?: number;
+  readonly gps_lng?: number;
+  readonly gps_fix_status?: GpsFixStatus;
+  readonly gps_accuracy_m?: number;
+  readonly transmission_path?: TransmissionPath;
   readonly recorded_at: string;
   readonly received_at: string;
 }
@@ -230,8 +239,11 @@ export interface CreateReadingPayload {
   motion_mg?: number;
   battery_pct?: number;
   wrist_on: boolean;
-  latitude?: number;
-  longitude?: number;
+  gps_lat?: number;
+  gps_lng?: number;
+  gps_fix_status?: GpsFixStatus;
+  gps_accuracy_m?: number;
+  transmission_path?: TransmissionPath;
   recorded_at: string;
 }
 
@@ -269,6 +281,45 @@ export interface DateRangeParams {
 
 export interface EventFilterParams extends DateRangeParams {
   event_type?: EventType;
+}
+
+// ── GeoJSON Types ───────────────────────────────────────────────
+
+export interface GeoJSONPoint {
+  readonly type: "Point";
+  readonly coordinates: [number, number]; // [lng, lat]
+}
+
+export interface GeoJSONLineString {
+  readonly type: "LineString";
+  readonly coordinates: [number, number][]; // [lng, lat][]
+}
+
+export interface GeoJSONFeature<
+  G extends GeoJSONPoint | GeoJSONLineString = GeoJSONPoint,
+  P = Record<string, unknown>,
+> {
+  readonly type: "Feature";
+  readonly geometry: G;
+  readonly properties: P;
+}
+
+export interface GeoJSONFeatureCollection<
+  G extends GeoJSONPoint | GeoJSONLineString = GeoJSONPoint,
+  P = Record<string, unknown>,
+> {
+  readonly type: "FeatureCollection";
+  readonly features: GeoJSONFeature<G, P>[];
+}
+
+export interface ReadingPointProperties {
+  readonly recorded_at: string;
+  readonly result: ReadingResult;
+  readonly battery_pct?: number;
+  readonly wrist_on: boolean;
+  readonly gps_accuracy_m?: number;
+  readonly transmission_path?: TransmissionPath;
+  readonly ethanol_bac?: number;
 }
 
 // ── Error Types ─────────────────────────────────────────────────

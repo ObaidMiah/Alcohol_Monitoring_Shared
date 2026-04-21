@@ -17,6 +17,11 @@ export type {
   EventFilterParams,
   EventType,
   EventsListResponse,
+  GeoJSONFeature,
+  GeoJSONFeatureCollection,
+  GeoJSONLineString,
+  GeoJSONPoint,
+  GpsFixStatus,
   MapSubject,
   Officer,
   OfficerSubjectAssignment,
@@ -24,6 +29,8 @@ export type {
   OrgSettings,
   ProgramStatus,
   Reading,
+  ReadingPointProperties,
+  ReadingResult,
   ReadingsListResponse,
   Role,
   Subject,
@@ -31,6 +38,7 @@ export type {
   SubjectStatus,
   SubjectStreak,
   SubjectSummary,
+  TransmissionPath,
   UpdateSubjectStatusPayload,
   ValidationErrorDetail,
 } from "./types";
@@ -67,5 +75,6 @@ export {
 
 // Utils
 export { formatBac, getBacColor, isBacAboveThreshold } from "./utils/bac";
-export { deriveSubjectStatus, isCompliant, requiresAttention } from "./utils/compliance";
+export { canViewBAC, deriveSubjectStatus, getReadingResult, isCompliant, requiresAttention } from "./utils/compliance";
 export { formatDate, formatDateTime, formatTime, isWithinMinutes, minutesAgo, timeAgo } from "./utils/date";
+export { readingsToGeoJSON, readingsToTrailLine } from "./utils/map";

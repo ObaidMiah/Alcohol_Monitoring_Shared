@@ -19,8 +19,8 @@ This package is the single source of truth for:
 
 ## Tech stack
 
-- **Language**: TypeScript (strict mode)
-- **Build output**: dist/ (CommonJS + ESM)
+- **Language**: TypeScript (strict mode, all entity interfaces readonly)
+- **Build tool**: tsup — outputs CJS (dist/index.js) + ESM (dist/index.mjs) + declarations (dist/index.d.ts)
 - **No framework dependencies** — works with Next.js and React Native
 - **Local development**: npm link into web and mobile repos
 - **Package name**: @alcohol-monitoring/shared
@@ -33,18 +33,19 @@ This package is the single source of truth for:
 src/
   api/
     client.ts         — base fetch wrapper with auth token injection
-    subjects.ts       — subject and reading API functions
-    readings.ts       — POST reading functions
-    events.ts         — POST event functions
+    subjects.ts       — all GET (read) functions + subject/officer/org writes
+    readings.ts       — POST reading (write only)
+    events.ts         — POST event + batch (write only)
     auth.ts           — Cognito auth helper functions
   types/
     index.ts          — all TypeScript interfaces and types
   constants/
-    index.ts          — event types, roles, colors, thresholds
+    index.ts          — event types, roles, device statuses, colors, thresholds
   utils/
     date.ts           — date formatting helpers
-    compliance.ts     — status calculation from reading data
+    compliance.ts     — status derivation from reading data
     bac.ts            — BAC formatting and color coding
+  index.ts            — barrel export (all public API)
 dist/                 — compiled output (gitignored)
 ```
 
@@ -63,55 +64,122 @@ getToken function — see src/api/client.ts.
 
 ### Endpoints this package calls
 
-**Write (wearable / phone app)**
+**Write — src/api/readings.ts**
 
-- POST /v1/readings — store a 30-min sensor snapshot
-- POST /v1/events — store a discrete event
-- POST /v1/events/batch — store up to 50 events in one transaction
+- POST /v1/readings → CreateReadingResponse { id: number, recorded_at: string }
 
-**Read (officer dashboard / subject app)**
+**Write — src/api/events.ts**
 
-- GET /v1/subjects/:id/readings — reading history with date range
-- GET /v1/subjects/:id/readings/latest — most recent reading
-- GET /v1/subjects/:id/events — event history with optional filters
-- GET /v1/subjects/:id/summary — streak + latest reading + program info
-- GET /v1/officers/:id/subjects — all subjects for an officer
-- GET /v1/map/subjects — all subjects with latest reading for fleet map
+- POST /v1/events → CreateEventResponse { id: string }
+- POST /v1/events/batch → BatchEventResponse { count: number, ids: string[] }
 
-**Management**
+**Read — src/api/subjects.ts**
 
-- POST /v1/subjects — enroll new subject
-- POST /v1/officers — create officer
-- PATCH /v1/subjects/:id/status — update program status
-- GET /v1/orgs/:id/settings — org configuration
-- PUT /v1/orgs/:id/settings — update org configuration
+- GET /v1/subjects/:id/readings?start=&end=&limit= → ReadingsListResponse { readings, count, has_more }
+- GET /v1/subjects/:id/readings/latest → Reading | null
+- GET /v1/subjects/:id/events?start=&end=&event_type= → EventsListResponse { events, count }
+- GET /v1/subjects/:id/summary → SubjectSummary
+- GET /v1/officers/:id/subjects → Subject[]
+- GET /v1/map/subjects?officer_id= → MapSubject[]
+
+**Management — src/api/subjects.ts**
+
+- POST /v1/subjects → Subject
+- POST /v1/officers → Officer
+- PATCH /v1/subjects/:id/status → Subject
+- GET /v1/orgs/:id/settings → OrgSettings
+- PUT /v1/orgs/:id/settings → OrgSettings
 
 ---
 
 ## TypeScript types
 
 All types are in src/types/index.ts and exported from the package root.
+All entity interfaces are readonly. Optional fields use `field?: type`
+(not `field: type | null`).
 
-### Key types to know
+### Literal types
+
+```typescript
+Role = "subject" | "officer" | "supervisor" | "org_admin" | "system_admin"
+ProgramStatus = "active" | "completed" | "revoked" | "suspended"
+DeviceStatus = "in_stock" | "active" | "in_repair" | "decommissioned"
+SubjectStatus = "compliant" | "attention" | "violation" | "offline"
+EventType = "tamper_ir_detected" | "tamper_ir_cleared" | "wrist_on" | "wrist_off"
+           | "battery_low" | "battery_critical" | "battery_charging" | "battery_full"
+           | "device_paired" | "device_unpaired" | "reading_missed"
+           | "geofence_enter" | "geofence_exit" | "curfew_violation" | "manual_check_in"
+```
+
+### Database entities
+
+- **Organization** — id, name, address?, city?, state?, zip?, phone?, email?, is_active, timestamps
+- **Account** — id, cognito_sub, email, role (Role), org_id, first_name, last_name, phone?, is_active, timestamps
+- **Officer** — id, account_id, org_id, badge_number?, department?, timestamps
+- **Subject** — id, account_id, org_id, program_status (ProgramStatus), enrolled_at, program_end_at?, case_number?, notes?, timestamps
+- **OfficerSubjectAssignment** — id, officer_id, subject_id, assigned_at, unassigned_at?, is_active
+- **Device** — id, serial_number, model, firmware_version?, org_id, status (DeviceStatus), timestamps
+- **DeviceAssignment** — id, device_id, subject_id, assigned_at, unassigned_at?, is_active
+- **Reading** — id (number), subject_id, device_id, ethanol_bac?, skin_temp_c?, motion_mg?, battery_pct?, wrist_on, latitude?, longitude?, recorded_at, received_at
+- **Event** — id (string), subject_id, device_id?, event_type (EventType), metadata?, recorded_at, received_at
+- **OrgSettings** — id, org_id, bac_threshold, reading_interval_mins, wrist_off_alert_mins, geofence_enabled, curfew_enabled, timestamps
+- **SubjectAchievement** — id, subject_id, achievement_type, achieved_at, created_at
+- **SubjectStreak** — id, subject_id, streak_type, current_count, longest_count, last_updated_at, created_at
+
+### Important: Subject vs Account split
+
+Subject and Officer do not store name/email/phone directly. Those fields
+live on the Account entity. Subject and Officer reference Account via
+account_id. Composite types like MapSubject and SubjectSummary include a
+`Pick<Account, "first_name" | "last_name" | "email" | "phone">` to provide
+display name data alongside the Subject record.
+
+### Composite / view types
 
 **SubjectStatus** — derived from latest reading data:
 
 - "compliant" — BAC below threshold, wrist on, battery > 20%, reading within last hour
-- "attention" — missed reading OR battery ≤ 20% OR wrist off > 15 min
+- "attention" — missed reading OR battery <= 20% OR wrist off > 15 min
 - "violation" — BAC above threshold OR tamper event in last hour
 - "offline" — no reading in last 2 hours
 
 **MapSubject** — what the fleet map renders per pin:
 
-- Combines Subject profile + latest Reading + derived SubjectStatus
-- Fetched in one call via GET /v1/map/subjects
+- subject: Subject
+- account: Pick<Account, "first_name" | "last_name" | "email" | "phone">
+- latest_reading: Reading | null
+- status: SubjectStatus
 
-**SubjectSummary** — what the subject mobile home screen shows:
+**SubjectSummary** — what the subject detail / mobile home screen shows:
 
-- streak (current + longest)
-- latest_reading
-- program info (status, enrolled_at, program_end_at, days_remaining)
-- last_7_days (reading_count, event_count, violation_count, missed_readings)
+- subject + account (same as MapSubject)
+- streak: { current, longest }
+- latest_reading: Reading | null
+- program: { status, enrolled_at, program_end_at?, days_remaining }
+- last_7_days: { reading_count, event_count, violation_count, missed_readings }
+
+### API response types
+
+- **CreateReadingResponse** — { id: number, recorded_at: string }
+- **CreateEventResponse** — { id: string }
+- **BatchEventResponse** — { count: number, ids: string[] }
+- **ReadingsListResponse** — { readings: Reading[], count: number, has_more: boolean }
+- **EventsListResponse** — { events: Event[], count: number }
+
+### API request / payload types
+
+- **CreateReadingPayload** — subject_id, device_id, ethanol_bac?, skin_temp_c?, motion_mg?, battery_pct?, wrist_on, latitude?, longitude?, recorded_at
+- **CreateEventPayload** — subject_id, device_id?, event_type, metadata?, recorded_at
+- **CreateSubjectPayload** — account_id, org_id, case_number?, notes?, program_end_at?
+- **CreateOfficerPayload** — account_id, org_id, badge_number?, department?
+- **UpdateSubjectStatusPayload** — program_status (ProgramStatus)
+- **DateRangeParams** — start?, end?
+- **EventFilterParams** — extends DateRangeParams + event_type?
+
+### Error types
+
+- **ValidationErrorDetail** — { field, message }
+- **ApiErrorResponse** — { error, details?: ValidationErrorDetail[] }
 
 ---
 
@@ -120,14 +188,26 @@ All types are in src/types/index.ts and exported from the package root.
 All in src/constants/index.ts:
 
 ```typescript
-EVENT_TYPES — array of all valid event_type strings
+EVENT_TYPES — EventType[] of all 15 valid event type strings
 SUBJECT_STATUS_COLORS — {
   compliant: "#1D9E75",
   attention: "#BA7517",
   violation: "#E05A38",
   offline:   "#888780"
 }
-ROLES — { SUBJECT, OFFICER, SUPERVISOR, ORG_ADMIN, SYSTEM_ADMIN }
+ROLES — {
+  SUBJECT: "subject",
+  OFFICER: "officer",
+  SUPERVISOR: "supervisor",
+  ORG_ADMIN: "org_admin",
+  SYSTEM_ADMIN: "system_admin"
+}
+DEVICE_STATUSES — {
+  IN_STOCK: "in_stock",
+  ACTIVE: "active",
+  IN_REPAIR: "in_repair",
+  DECOMMISSIONED: "decommissioned"
+}
 BAC_DEFAULT_THRESHOLD — 0.02
 READING_INTERVAL_MINS — 30
 WRIST_OFF_ALERT_MINS  — 15
@@ -140,8 +220,15 @@ WRIST_OFF_ALERT_MINS  — 15
 src/api/client.ts exports an initializer that accepts a getToken function:
 
 ```typescript
-initApiClient({ getToken: () => string | null, baseUrl: string });
+initApiClient({
+  getToken: () => string | null | Promise<string | null>,
+  baseUrl: string,
+  onUnauthorized?: () => void
+});
 ```
+
+getToken supports both sync and async — sync for web (localStorage),
+async for mobile (SecureStore returns a Promise).
 
 This is called once at app startup — differently in Next.js vs React Native:
 
@@ -158,23 +245,68 @@ Mobile (Expo):
 
 ```typescript
 initApiClient({
-  getToken: async () => await SecureStore.getItemAsync("cognito_token"),
+  getToken: () => SecureStore.getItemAsync("cognito_token"),
   baseUrl: process.env.EXPO_PUBLIC_API_URL,
 });
 ```
 
-After init, all API functions in subjects.ts, readings.ts, and events.ts
-automatically include the auth header without any extra configuration.
+After init, all API functions automatically include the auth header.
 
-### Error handling
+### Exported error classes
 
-- 401 — token expired, triggers re-auth (injected onUnauthorized callback)
+Callers can import and catch these:
+
+- **ApiError** — { message, statusCode } — thrown for non-OK HTTP responses
+- **ValidationError** extends ApiError — { message, fields: ValidationErrorDetail[] } — thrown for 400 with details
+- **NetworkError** — { message } — thrown when fetch itself fails (no network, DNS, etc.)
+
+### Error handling by status code
+
+- 401 — calls onUnauthorized callback, throws ApiError("Unauthorized", 401)
 - 404 — returns null (not found is not an error)
-- 400 — throws ValidationError with field details
-- 500 — throws ApiError with generic message, never exposes raw DB errors
+- 400 — throws ValidationError with field details if present
+- 500+ — throws ApiError("An unexpected server error occurred", statusCode). Raw server error messages are never exposed to callers.
+- Other non-OK — throws ApiError with the error field from the response body
+- 204 — returns null
 - Network failure — throws NetworkError
 
 Never catch errors inside the API functions — let callers handle them.
+
+### API functions reference
+
+**src/api/subjects.ts (reads)**
+
+```typescript
+getSubjectReadings(subjectId, start?, end?, limit?) → ReadingsListResponse
+getLatestReading(subjectId) → Reading | null
+getSubjectEvents(subjectId, options?: EventFilterParams) → EventsListResponse
+getSubjectSummary(subjectId) → SubjectSummary
+getAllSubjectsForOfficer(officerId) → Subject[]
+getMapSubjects(officerId) → MapSubject[]
+```
+
+**src/api/subjects.ts (writes)**
+
+```typescript
+createSubject(payload: CreateSubjectPayload) → Subject
+updateSubjectStatus(subjectId, payload: UpdateSubjectStatusPayload) → Subject
+createOfficer(payload: CreateOfficerPayload) → Officer
+getOrgSettings(orgId) → OrgSettings
+updateOrgSettings(orgId, payload) → OrgSettings
+```
+
+**src/api/readings.ts**
+
+```typescript
+postReading(payload: CreateReadingPayload) → CreateReadingResponse
+```
+
+**src/api/events.ts**
+
+```typescript
+postEvent(payload: CreateEventPayload) → CreateEventResponse
+postEventBatch(events: CreateEventPayload[]) → BatchEventResponse
+```
 
 ---
 
@@ -184,10 +316,7 @@ AWS Cognito user pool in us-west-2. Three app clients:
 
 - alcohol-monitoring-web — web dashboard (no client secret)
 - alcohol-monitoring-mobile — mobile app (no client secret)
-- alcohol-monitoring-api — backend machine to machine (has secret)
-
-The shared package handles token storage and refresh for web and mobile.
-The backend machine to machine client is never used in this package.
+- alcohol-monitoring-api — backend machine to machine (has secret, not used here)
 
 User pool details live in environment variables — never hardcoded:
 
@@ -195,39 +324,69 @@ User pool details live in environment variables — never hardcoded:
 - NEXT_PUBLIC_COGNITO_WEB_CLIENT_ID / EXPO_PUBLIC_COGNITO_MOBILE_CLIENT_ID
 - NEXT_PUBLIC_COGNITO_REGION / EXPO_PUBLIC_COGNITO_REGION
 
----
+getCognitoConfig() reads these env vars with fallback between web and mobile
+prefixes. The functions call the Cognito Identity Provider API directly via
+fetch (no SDK dependency).
 
-## Compliance status logic
-
-src/utils/compliance.ts contains deriveSubjectStatus(reading, events):
+### Exported auth functions
 
 ```typescript
-function deriveSubjectStatus(
-  latestReading: Reading | null,
-  recentEvents: Event[]
-): SubjectStatus {
-  if (!latestReading) return "offline";
-  const age = Date.now() - new Date(latestReading.recorded_at).getTime();
-  if (age > 2 * 60 * 60 * 1000) return "offline";
-  const recentTamper = recentEvents.some(
-    (e) =>
-      e.event_type === "tamper_ir_detected" &&
-      Date.now() - new Date(e.recorded_at).getTime() < 60 * 60 * 1000
-  );
-  if (recentTamper || (latestReading.ethanol_bac ?? 0) > BAC_DEFAULT_THRESHOLD)
-    return "violation";
-  if (
-    (latestReading.battery_pct ?? 100) <= 20 ||
-    latestReading.wrist_on === false ||
-    age > READING_INTERVAL_MINS * 60 * 1000 * 1.5
-  )
-    return "attention";
-  return "compliant";
-}
+getCognitoConfig() → { userPoolId, clientId, region }
+signIn(username, password) → { AccessToken, IdToken, RefreshToken?, ExpiresIn }
+signUp(username, password, email) → { UserConfirmed, UserSub }
+confirmSignUp(username, code) → void
+refreshToken(refreshTokenValue) → { AccessToken, IdToken, ExpiresIn }
+forgotPassword(username) → void
+confirmForgotPassword(username, code, newPassword) → void
+signOut(accessToken) → void
 ```
 
-This function is the single source of truth for status — used on the
+Token storage is the app's responsibility — this package only handles
+the Cognito API calls and token retrieval via the injected getToken function.
+
+---
+
+## Utility functions
+
+### src/utils/compliance.ts
+
+```typescript
+deriveSubjectStatus(latestReading: Reading | null, recentEvents: Event[]) → SubjectStatus
+isCompliant(status: SubjectStatus) → boolean
+requiresAttention(status: SubjectStatus) → boolean  // true for "attention" or "violation"
+```
+
+deriveSubjectStatus is the single source of truth for status — used on the
 fleet map, subject list, subject detail, and mobile home screen.
+
+Logic:
+
+```typescript
+if (!latestReading) return "offline";
+if (age > 2 hours) return "offline";
+if (tamper_ir_detected in last hour OR ethanol_bac > BAC_DEFAULT_THRESHOLD) return "violation";
+if (battery_pct <= 20 OR wrist_on === false OR age > 45 min) return "attention";
+return "compliant";
+```
+
+### src/utils/bac.ts
+
+```typescript
+formatBac(value?: number | null) → string         // "0.015" or "--" for null
+getBacColor(value?: number | null) → string        // hex color based on threshold
+isBacAboveThreshold(value?, threshold?) → boolean  // defaults to BAC_DEFAULT_THRESHOLD
+```
+
+### src/utils/date.ts
+
+```typescript
+formatDate(isoString) → string      // "Apr 17, 2026"
+formatTime(isoString) → string      // "3:45 PM"
+formatDateTime(isoString) → string  // "Apr 17, 2026 3:45 PM"
+timeAgo(isoString) → string         // "5m ago", "3h ago", "2d ago"
+isWithinMinutes(isoString, minutes) → boolean
+minutesAgo(isoString) → number
+```
 
 ---
 
@@ -246,7 +405,8 @@ npm link @alcohol-monitoring/shared
 npm link @alcohol-monitoring/shared
 ```
 
-After any change to the shared package, run npm run build again.
+After any change to the shared package, run `npm run build` again.
+Or use `npm run dev` for watch mode during development.
 Both apps pick up the changes automatically via the symlink.
 
 ---
@@ -271,3 +431,6 @@ Both apps pick up the changes automatically via the symlink.
 - Do not add a new API function without adding the corresponding TypeScript type
 - Do not change BAC_DEFAULT_THRESHOLD here — the real threshold comes from
   org_settings via the API, this constant is only a fallback default
+- Do not put name/email/phone directly on Subject or Officer — those fields
+  belong on Account. Use the account field from MapSubject or SubjectSummary.
+- Do not expose raw server error messages — 500+ errors must use a generic message

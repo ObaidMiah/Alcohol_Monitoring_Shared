@@ -1,4 +1,4 @@
-import type { Event, Reading, SubjectStatus } from "../types";
+import type { Event, Reading, ReadingResult, Role, SubjectStatus } from "../types";
 import { BAC_DEFAULT_THRESHOLD, READING_INTERVAL_MINS } from "../constants";
 
 /**
@@ -37,6 +37,22 @@ export function deriveSubjectStatus(
   }
 
   return "compliant";
+}
+
+export function getReadingResult(reading: Reading): ReadingResult {
+  if (reading.ethanol_bac == null) return "no_data";
+  return reading.ethanol_bac > BAC_DEFAULT_THRESHOLD ? "fail" : "pass";
+}
+
+const BAC_VISIBLE_ROLES: ReadonlySet<Role> = new Set([
+  "officer",
+  "supervisor",
+  "org_admin",
+  "system_admin",
+]);
+
+export function canViewBAC(role: Role): boolean {
+  return BAC_VISIBLE_ROLES.has(role);
 }
 
 export function isCompliant(status: SubjectStatus): boolean {
