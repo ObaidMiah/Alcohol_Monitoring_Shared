@@ -43,8 +43,9 @@ src/
     index.ts          — event types, roles, device statuses, colors, thresholds
   utils/
     date.ts           — date formatting helpers
-    compliance.ts     — status derivation from reading data
+    compliance.ts     — status derivation, BAC visibility, reading results
     bac.ts            — BAC formatting and color coding
+    map.ts            — GeoJSON conversion for Mapbox (points + trail line)
   index.ts            — barrel export (all public API)
 dist/                 — compiled output (gitignored)
 ```
@@ -105,6 +106,9 @@ Role = "subject" | "officer" | "supervisor" | "org_admin" | "system_admin"
 ProgramStatus = "active" | "completed" | "revoked" | "suspended"
 DeviceStatus = "in_stock" | "active" | "in_repair" | "decommissioned"
 SubjectStatus = "compliant" | "attention" | "violation" | "offline"
+GpsFixStatus = "acquired" | "searching" | "lost"
+TransmissionPath = "ble" | "wifi" | "cellular"
+ReadingResult = "pass" | "fail" | "no_data"
 EventType = "tamper_ir_detected" | "tamper_ir_cleared" | "wrist_on" | "wrist_off"
            | "battery_low" | "battery_critical" | "battery_charging" | "battery_full"
            | "device_paired" | "device_unpaired" | "reading_missed"
@@ -120,11 +124,19 @@ EventType = "tamper_ir_detected" | "tamper_ir_cleared" | "wrist_on" | "wrist_off
 - **OfficerSubjectAssignment** — id, officer_id, subject_id, assigned_at, unassigned_at?, is_active
 - **Device** — id, serial_number, model, firmware_version?, org_id, status (DeviceStatus), timestamps
 - **DeviceAssignment** — id, device_id, subject_id, assigned_at, unassigned_at?, is_active
-- **Reading** — id (number), subject_id, device_id, ethanol_bac?, skin_temp_c?, motion_mg?, battery_pct?, wrist_on, latitude?, longitude?, recorded_at, received_at
-- **Event** — id (string), subject_id, device_id?, event_type (EventType), metadata?, recorded_at, received_at
+- **Reading** — id (number), subjectId, deviceId, bac?, skinTempC?, motionMg?, batteryPercent?, wristOn, gpsLat?, gpsLng?, gpsFixStatus? (GpsFixStatus), gpsAccuracyM?, transmissionPath? (TransmissionPath), recordedAt, receivedAt
+- **Event** — id (string), subjectId, deviceId?, eventType (EventType), metadata?, recordedAt, receivedAt
 - **OrgSettings** — id, org_id, bac_threshold, reading_interval_mins, wrist_off_alert_mins, geofence_enabled, curfew_enabled, timestamps
 - **SubjectAchievement** — id, subject_id, achievement_type, achieved_at, created_at
 - **SubjectStreak** — id, subject_id, streak_type, current_count, longest_count, last_updated_at, created_at
+
+### Naming convention: camelCase for Reading and Event
+
+Reading and Event use camelCase field names (subjectId, recordedAt, bac,
+batteryPercent, etc.) because these types are consumed directly by the
+frontend. All other entity types (Organization, Account, Officer, Subject,
+Device, OrgSettings, etc.) and all API payloads/responses use snake_case
+to match the backend API contract.
 
 ### Important: Subject vs Account split
 
@@ -168,7 +180,7 @@ display name data alongside the Subject record.
 
 ### API request / payload types
 
-- **CreateReadingPayload** — subject_id, device_id, ethanol_bac?, skin_temp_c?, motion_mg?, battery_pct?, wrist_on, latitude?, longitude?, recorded_at
+- **CreateReadingPayload** — subject_id, device_id, ethanol_bac?, skin_temp_c?, motion_mg?, battery_pct?, wrist_on, gps_lat?, gps_lng?, gps_fix_status?, gps_accuracy_m?, transmission_path?, recorded_at
 - **CreateEventPayload** — subject_id, device_id?, event_type, metadata?, recorded_at
 - **CreateSubjectPayload** — account_id, org_id, case_number?, notes?, program_end_at?
 - **CreateOfficerPayload** — account_id, org_id, badge_number?, department?
@@ -352,6 +364,8 @@ the Cognito API calls and token retrieval via the injected getToken function.
 
 ```typescript
 deriveSubjectStatus(latestReading: Reading | null, recentEvents: Event[]) → SubjectStatus
+getReadingResult(reading: Reading) → ReadingResult  // "pass", "fail", or "no_data"
+canViewBAC(role: Role) → boolean                    // true only for system_admin
 isCompliant(status: SubjectStatus) → boolean
 requiresAttention(status: SubjectStatus) → boolean  // true for "attention" or "violation"
 ```
@@ -364,10 +378,14 @@ Logic:
 ```typescript
 if (!latestReading) return "offline";
 if (age > 2 hours) return "offline";
-if (tamper_ir_detected in last hour OR ethanol_bac > BAC_DEFAULT_THRESHOLD) return "violation";
-if (battery_pct <= 20 OR wrist_on === false OR age > 45 min) return "attention";
+if (tamper_ir_detected in last hour OR bac > BAC_DEFAULT_THRESHOLD) return "violation";
+if (batteryPercent <= 20 OR wristOn === false OR age > 45 min) return "attention";
 return "compliant";
 ```
+
+canViewBAC restricts BAC visibility to system_admin only. All other roles
+(including officers) see pass/fail results but not raw BAC values. This is
+enforced in the GeoJSON map utils as well.
 
 ### src/utils/bac.ts
 
@@ -376,6 +394,19 @@ formatBac(value?: number | null) → string         // "0.015" or "--" for null
 getBacColor(value?: number | null) → string        // hex color based on threshold
 isBacAboveThreshold(value?, threshold?) → boolean  // defaults to BAC_DEFAULT_THRESHOLD
 ```
+
+### src/utils/map.ts
+
+```typescript
+readingsToGeoJSON(readings: Reading[], role: Role) → GeoJSONFeatureCollection<GeoJSONPoint, ReadingPointProperties>
+readingsToTrailLine(readings: Reading[]) → GeoJSONFeature<GeoJSONLineString> | null
+```
+
+Both functions filter out readings where gpsLat/gpsLng is null or
+gpsFixStatus !== "acquired". readingsToGeoJSON omits the bac property
+from feature properties unless canViewBAC(role) is true.
+readingsToTrailLine sorts by recordedAt ascending and returns null if
+fewer than 2 valid GPS points exist.
 
 ### src/utils/date.ts
 
