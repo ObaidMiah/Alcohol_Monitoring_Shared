@@ -19,7 +19,7 @@ export function deriveSubjectStatus(
   // Tamper event in last hour OR BAC above threshold → violation
   const recentTamper = recentEvents.some(
     (e) =>
-      e.eventType === "tamper_ir_detected" &&
+      e.type === "tamper_ir_detected" &&
       Date.now() - new Date(e.recordedAt).getTime() < 60 * 60 * 1000,
   );
 

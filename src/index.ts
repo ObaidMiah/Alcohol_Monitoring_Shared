@@ -1,6 +1,13 @@
 // Types
 export type {
   Account,
+  AdminDeviceListItem,
+  AdminOfficerListItem,
+  AdminSubjectListItem,
+  AlertEventType,
+  AlertItem,
+  AlertSeverity,
+  AlertsFilterParams,
   ApiErrorResponse,
   BatchEventResponse,
   CreateEventPayload,
@@ -8,11 +15,11 @@ export type {
   CreateOfficerPayload,
   CreateReadingPayload,
   CreateReadingResponse,
-  CreateSubjectPayload,
-  DateRangeParams,
   Device,
   DeviceAssignment,
+  DeviceHistoryItem,
   DeviceStatus,
+  EnrollSubjectPayload,
   Event,
   EventFilterParams,
   EventType,
@@ -31,15 +38,19 @@ export type {
   Reading,
   ReadingPointProperties,
   ReadingResult,
+  ReadingsFilterParams,
   ReadingsListResponse,
   Role,
   Subject,
   SubjectAchievement,
+  SubjectDetail,
+  SubjectListItem,
   SubjectStatus,
   SubjectStreak,
   SubjectSummary,
   TransmissionPath,
-  UpdateSubjectStatusPayload,
+  UpdateDeviceStatusPayload,
+  UpdateOrgSettingsPayload,
   ValidationErrorDetail,
 } from "./types";
 
@@ -60,21 +71,33 @@ export { confirmForgotPassword, confirmSignUp, forgotPassword, getCognitoConfig,
 export { postEvent, postEventBatch } from "./api/events";
 export { postReading } from "./api/readings";
 export {
-  createOfficer,
-  createSubject,
-  getAllSubjectsForOfficer,
+  getAlerts,
   getLatestReading,
   getMapSubjects,
-  getOrgSettings,
+  getMe,
+  getSubjectDetail,
   getSubjectEvents,
   getSubjectReadings,
   getSubjectSummary,
-  updateOrgSettings,
-  updateSubjectStatus,
+  getSubjects,
 } from "./api/subjects";
+export {
+  createOfficer,
+  deactivateOfficer,
+  enrollSubject,
+  getAdminSubjects,
+  getDeviceHistory,
+  getDevices,
+  getOfficerSubjects,
+  getOfficers,
+  getOrgSettings,
+  updateDeviceStatus,
+  updateOrgSettings,
+} from "./api/admin";
 
 // Utils
 export { formatBac, getBacColor, isBacAboveThreshold } from "./utils/bac";
 export { canViewBAC, deriveSubjectStatus, getReadingResult, isCompliant, requiresAttention } from "./utils/compliance";
 export { formatDate, formatDateTime, formatTime, isWithinMinutes, minutesAgo, timeAgo } from "./utils/date";
-export { readingsToGeoJSON, readingsToTrailLine } from "./utils/map";
+export { READING_RESULT_CONFIG, getSubjectTrailStats, readingsToGeoJSON, readingsToTrailLine } from "./utils/map";
+export type { ReadingResultKey, TrailStats } from "./utils/map";

@@ -1,5 +1,3 @@
-import type { ApiErrorResponse, ValidationErrorDetail } from "../types";
-
 // ── Error classes ───────────────────────────────────────────────
 
 export class ApiError extends Error {
@@ -15,7 +13,7 @@ export class ApiError extends Error {
 export class ValidationError extends ApiError {
   constructor(
     message: string,
-    public fields: ValidationErrorDetail[],
+    public fields: Record<string, string[]>,
   ) {
     super(message, 400);
     this.name = "ValidationError";
@@ -53,6 +51,20 @@ function getConfig(): ApiClientConfig {
 }
 
 // ── Fetch wrapper ───────────────────────────────────────────────
+
+interface ApiSuccessResponse<T> {
+  success: true;
+  data: T;
+}
+
+interface ApiErrorBody {
+  success: false;
+  error: {
+    message: string;
+    statusCode?: number;
+    details?: Record<string, string[]>;
+  };
+}
 
 export async function apiFetch<T>(
   path: string,
@@ -93,17 +105,17 @@ export async function apiFetch<T>(
   }
 
   if (!response.ok) {
-    let body: ApiErrorResponse | undefined;
+    let body: ApiErrorBody | undefined;
     try {
       body = await response.json();
     } catch {
       // response body may not be JSON
     }
 
-    if (response.status === 400 && body?.details) {
+    if (response.status === 400 && body?.error?.details) {
       throw new ValidationError(
-        body.error ?? "Validation failed",
-        body.details,
+        body.error.message ?? "Validation failed",
+        body.error.details,
       );
     }
 
@@ -113,7 +125,7 @@ export async function apiFetch<T>(
     }
 
     throw new ApiError(
-      body?.error ?? `Request failed with status ${response.status}`,
+      body?.error?.message ?? `Request failed with status ${response.status}`,
       response.status,
     );
   }
@@ -122,5 +134,7 @@ export async function apiFetch<T>(
     return null as T;
   }
 
-  return response.json();
+  // Unwrap the { success, data } envelope the API uses
+  const json = await response.json() as ApiSuccessResponse<T>;
+  return json.data;
 }

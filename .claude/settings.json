@@ -1,0 +1,15 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(npm run:*)",
+      "mcp__slack__slack_list_channels",
+      "Bash(git add:*)",
+      "Bash(git commit -m ':*)",
+      "Bash(git push:*)",
+      "mcp__slack__slack_post_message",
+      "Read(//Users/obaidmiah/**)",
+      "Bash(xargs ls:*)"
+    ]
+  }
+}

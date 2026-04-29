@@ -8,28 +8,39 @@ export type DeviceStatus = "in_stock" | "active" | "in_repair" | "decommissioned
 
 export type SubjectStatus = "compliant" | "attention" | "violation" | "offline";
 
-export type GpsFixStatus = "acquired" | "searching" | "lost";
+export type GpsFixStatus = "acquired" | "failed" | "disabled" | "stale";
 
-export type TransmissionPath = "ble" | "wifi" | "cellular";
+export type TransmissionPath = "ble" | "cellular";
 
 export type ReadingResult = "pass" | "fail" | "no_data";
 
 export type EventType =
   | "tamper_ir_detected"
   | "tamper_ir_cleared"
-  | "wrist_on"
+  | "wrist_removed"
+  | "wrist_reattached"
+  | "ble_connected"
+  | "ble_disconnected"
+  | "cellular_connected"
+  | "cellular_lost"
+  | "battery_low_20"
+  | "battery_low_10"
+  | "battery_critical_5"
+  | "device_powered_on"
+  | "device_powered_off"
+  | "reading_missed"
+  | "charging_started"
+  | "charging_stopped";
+
+export type AlertEventType =
+  | "violation"
+  | "tamper"
   | "wrist_off"
   | "battery_low"
-  | "battery_critical"
-  | "battery_charging"
-  | "battery_full"
-  | "device_paired"
-  | "device_unpaired"
-  | "reading_missed"
-  | "geofence_enter"
-  | "geofence_exit"
-  | "curfew_violation"
-  | "manual_check_in";
+  | "connectivity"
+  | "missed_reading";
+
+export type AlertSeverity = "critical" | "warning" | "info";
 
 // ── Database Entities (readonly) ────────────────────────────────
 
@@ -113,44 +124,125 @@ export interface DeviceAssignment {
   readonly is_active: boolean;
 }
 
+// ── API Response Entities (camelCase, matches API output) ───────
+
 export interface Reading {
-  readonly id: number;
+  readonly id: string;
   readonly subjectId: string;
   readonly deviceId: string;
-  readonly bac?: number;
-  readonly skinTempC?: number;
-  readonly motionMg?: number;
-  readonly batteryPercent?: number;
-  readonly wristOn: boolean;
-  readonly gpsLat?: number;
-  readonly gpsLng?: number;
-  readonly gpsFixStatus?: GpsFixStatus;
-  readonly gpsAccuracyM?: number;
-  readonly transmissionPath?: TransmissionPath;
   readonly recordedAt: string;
   readonly receivedAt: string;
+  readonly sequenceNumber: number;
+  readonly ethanolRaw: number | null;
+  readonly bac: number | null;
+  readonly gpsLat: number | null;
+  readonly gpsLng: number | null;
+  readonly gpsAccuracyM: number | null;
+  readonly gpsFixStatus: GpsFixStatus | null;
+  readonly batteryPercent: number | null;
+  readonly wristOn: boolean | null;
+  readonly transmissionPath: TransmissionPath | null;
 }
 
 export interface Event {
   readonly id: string;
   readonly subjectId: string;
-  readonly deviceId?: string;
-  readonly eventType: EventType;
-  readonly metadata?: Record<string, unknown>;
+  readonly deviceId: string;
+  readonly type: EventType;
   readonly recordedAt: string;
   readonly receivedAt: string;
+  readonly metadata: Record<string, unknown> | null;
 }
 
-export interface OrgSettings {
+// ── Composite / View Types (match API response shapes) ──────────
+
+export interface SubjectListItem {
   readonly id: string;
-  readonly org_id: string;
-  readonly bac_threshold: number;
-  readonly reading_interval_mins: number;
-  readonly wrist_off_alert_mins: number;
-  readonly geofence_enabled: boolean;
-  readonly curfew_enabled: boolean;
-  readonly created_at: string;
-  readonly updated_at: string;
+  readonly name: string;
+  readonly caseNumber: string | null;
+  readonly status: SubjectStatus;
+  readonly lastReadingAt: string | null;
+  readonly bac: number;
+  readonly batteryPercent: number | null;
+  readonly streak: number;
+  readonly programEndDate: string | null;
+}
+
+export interface SubjectDetail {
+  readonly id: string;
+  readonly name: string;
+  readonly caseNumber: string | null;
+  readonly status: SubjectStatus;
+  readonly programStartDate: string;
+  readonly programEndDate: string | null;
+  readonly streak: number;
+  readonly readingsThisWeek: number;
+  readonly violationsThisWeek: number;
+  readonly missedThisWeek: number;
+  readonly devices: {
+    readonly id: string;
+    readonly model: string;
+    readonly firmwareVersion: string | null;
+    readonly batteryPercent: number | null;
+    readonly assignedAt: string;
+  }[];
+}
+
+export interface MapSubject {
+  readonly id: string;
+  readonly name: string;
+  readonly caseNumber: string | null;
+  readonly status: SubjectStatus;
+  readonly lat: number | null;
+  readonly lng: number | null;
+  readonly streak: number;
+  readonly latestReading: {
+    readonly bac: number;
+    readonly batteryPercent: number | null;
+    readonly wristStatus: "on" | "off" | "tamper";
+    readonly gpsTimestamp: string;
+  } | null;
+}
+
+export interface SubjectSummary {
+  readonly enrolledAt: string;
+  readonly programStatus: ProgramStatus;
+  readonly programEndAt: string | null;
+  readonly streak: {
+    readonly currentStreak: number;
+    readonly longestStreak: number;
+    readonly streakStarted: string | null;
+  } | null;
+  readonly latestReading: Reading | null;
+  readonly readingsLast7Days: number;
+  readonly eventsLast7Days: number;
+}
+
+export interface AlertItem {
+  readonly id: string;
+  readonly subjectId: string;
+  readonly subjectName: string;
+  readonly caseNumber: string | null;
+  readonly type: AlertEventType;
+  readonly severity: AlertSeverity;
+  readonly message: string;
+  readonly recordedAt: string;
+  readonly read: boolean;
+}
+
+// ── Org Settings (matches API response) ─────────────────────────
+
+export interface OrgSettings {
+  readonly orgName: string;
+  readonly primaryColor: string | null;
+  readonly bacThreshold: number;
+  readonly readingIntervalMin: number;
+  readonly wristOffAlertMin: number;
+  readonly missedReadingsBeforeAlert: number;
+  readonly smsOnViolation: boolean;
+  readonly emailOnViolation: boolean;
+  readonly dailyDigest: boolean;
+  readonly digestTime: string;
 }
 
 export interface SubjectAchievement {
@@ -171,41 +263,10 @@ export interface SubjectStreak {
   readonly created_at: string;
 }
 
-// ── Composite / View Types ──────────────────────────────────────
-
-export interface MapSubject {
-  readonly subject: Subject;
-  readonly account: Pick<Account, "first_name" | "last_name" | "email" | "phone">;
-  readonly latest_reading: Reading | null;
-  readonly status: SubjectStatus;
-}
-
-export interface SubjectSummary {
-  readonly subject: Subject;
-  readonly account: Pick<Account, "first_name" | "last_name" | "email" | "phone">;
-  readonly streak: {
-    readonly current: number;
-    readonly longest: number;
-  };
-  readonly latest_reading: Reading | null;
-  readonly program: {
-    readonly status: ProgramStatus;
-    readonly enrolled_at: string;
-    readonly program_end_at?: string;
-    readonly days_remaining: number | null;
-  };
-  readonly last_7_days: {
-    readonly reading_count: number;
-    readonly event_count: number;
-    readonly violation_count: number;
-    readonly missed_readings: number;
-  };
-}
-
 // ── API Response Types ──────────────────────────────────────────
 
 export interface CreateReadingResponse {
-  readonly id: number;
+  readonly id: string;
   readonly recorded_at: string;
 }
 
@@ -221,7 +282,7 @@ export interface BatchEventResponse {
 export interface ReadingsListResponse {
   readonly readings: Reading[];
   readonly count: number;
-  readonly has_more: boolean;
+  readonly hasMore: boolean;
 }
 
 export interface EventsListResponse {
@@ -229,58 +290,123 @@ export interface EventsListResponse {
   readonly count: number;
 }
 
-// ── API Request / Payload Types ─────────────────────────────────
+// ── API Request / Payload Types (snake_case, matches API input) ─
 
 export interface CreateReadingPayload {
-  subject_id: string;
   device_id: string;
+  subject_id: string;
+  recorded_at: string;
+  sequence_number: number;
+  ethanol_raw?: number;
   ethanol_bac?: number;
-  skin_temp_c?: number;
-  motion_mg?: number;
-  battery_pct?: number;
-  wrist_on: boolean;
   gps_lat?: number;
   gps_lng?: number;
-  gps_fix_status?: GpsFixStatus;
   gps_accuracy_m?: number;
-  transmission_path?: TransmissionPath;
-  recorded_at: string;
+  gps_fix_status?: GpsFixStatus;
+  battery_pct?: number;
+  wrist_on?: boolean;
+  transmission_path: TransmissionPath;
+  raw_payload: Record<string, unknown>;
 }
 
 export interface CreateEventPayload {
+  device_id: string;
   subject_id: string;
-  device_id?: string;
   event_type: EventType;
-  metadata?: Record<string, unknown>;
   recorded_at: string;
+  metadata?: Record<string, unknown>;
 }
 
-export interface CreateSubjectPayload {
-  account_id: string;
-  org_id: string;
-  case_number?: string;
-  notes?: string;
-  program_end_at?: string;
+export interface EnrollSubjectPayload {
+  name: string;
+  email: string;
+  caseNumber: string;
+  programStartDate: string;
+  programEndDate: string;
+  assignedOfficerId: string;
+  deviceId: string;
 }
 
 export interface CreateOfficerPayload {
-  account_id: string;
-  org_id: string;
-  badge_number?: string;
-  department?: string;
+  name: string;
+  email: string;
+  badgeNumber: string;
 }
 
-export interface UpdateSubjectStatusPayload {
-  program_status: ProgramStatus;
+export interface UpdateDeviceStatusPayload {
+  status: "in_repair" | "decommissioned";
 }
 
-export interface DateRangeParams {
+export interface UpdateOrgSettingsPayload {
+  bacThreshold?: number;
+  readingIntervalMin?: number;
+  wristOffAlertMin?: number;
+  missedReadingsBeforeAlert?: number;
+  smsOnViolation?: boolean;
+  emailOnViolation?: boolean;
+  dailyDigest?: boolean;
+  digestTime?: string;
+  primaryColor?: string | null;
+}
+
+export interface EventFilterParams {
   start?: string;
   end?: string;
+  event_type?: EventType;
+  limit?: number;
 }
 
-export interface EventFilterParams extends DateRangeParams {
-  event_type?: EventType;
+export interface ReadingsFilterParams {
+  start: string;
+  end: string;
+  limit?: number;
+}
+
+export interface AlertsFilterParams {
+  type?: AlertEventType;
+  limit?: number;
+}
+
+// ── Admin Response Types ────────────────────────────────────────
+
+export interface AdminSubjectListItem {
+  readonly id: string;
+  readonly name: string;
+  readonly caseNumber: string | null;
+  readonly status: SubjectStatus;
+  readonly officerName: string;
+  readonly officerId: string | null;
+  readonly programStartDate: string;
+  readonly programEndDate: string | null;
+}
+
+export interface AdminOfficerListItem {
+  readonly id: string;
+  readonly name: string;
+  readonly email?: string;
+  readonly badgeNumber?: string;
+  readonly subjectCount?: number;
+  readonly lastLogin?: string;
+  readonly isActive?: boolean;
+}
+
+export interface AdminDeviceListItem {
+  readonly id: string;
+  readonly serialNumber: string;
+  readonly model: string;
+  readonly firmwareVersion: string | null;
+  readonly latestFirmware?: string;
+  readonly status: string;
+  readonly batteryPercent?: number;
+  readonly assignedSubjectName?: string | null;
+  readonly assignedSubjectId?: string | null;
+}
+
+export interface DeviceHistoryItem {
+  readonly id: string;
+  readonly subjectName: string;
+  readonly assignedAt: string;
+  readonly removedAt: string | null;
 }
 
 // ── GeoJSON Types ───────────────────────────────────────────────
@@ -315,21 +441,25 @@ export interface GeoJSONFeatureCollection<
 export interface ReadingPointProperties {
   readonly recordedAt: string;
   readonly result: ReadingResult;
-  readonly batteryPercent?: number;
-  readonly wristOn: boolean;
-  readonly gpsAccuracyM?: number;
-  readonly transmissionPath?: TransmissionPath;
-  readonly bac?: number;
+  readonly batteryPercent: number | null;
+  readonly wristOn: boolean | null;
+  readonly gpsAccuracyM: number | null;
+  readonly transmissionPath: TransmissionPath | null;
+  readonly bac?: number | null;
 }
 
 // ── Error Types ─────────────────────────────────────────────────
 
 export interface ValidationErrorDetail {
   readonly field: string;
-  readonly message: string;
+  readonly messages: string[];
 }
 
 export interface ApiErrorResponse {
-  readonly error: string;
-  readonly details?: ValidationErrorDetail[];
+  readonly success: false;
+  readonly error: {
+    readonly message: string;
+    readonly statusCode?: number;
+    readonly details?: Record<string, string[]>;
+  };
 }

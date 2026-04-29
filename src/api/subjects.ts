@@ -1,34 +1,40 @@
 import type {
-  CreateOfficerPayload,
-  CreateSubjectPayload,
+  AlertItem,
+  AlertsFilterParams,
   EventFilterParams,
   EventsListResponse,
   MapSubject,
-  Officer,
-  OrgSettings,
   Reading,
+  ReadingsFilterParams,
   ReadingsListResponse,
-  Subject,
+  SubjectDetail,
+  SubjectListItem,
   SubjectSummary,
-  UpdateSubjectStatusPayload,
 } from "../types";
 import { apiFetch } from "./client";
 
 // ── Subject reads ───────────────────────────────────────────────
 
+export async function getSubjects(): Promise<SubjectListItem[]> {
+  return apiFetch<SubjectListItem[]>("/v1/subjects");
+}
+
+export async function getSubjectDetail(
+  subjectId: string,
+): Promise<SubjectDetail> {
+  return apiFetch<SubjectDetail>(`/v1/subjects/${subjectId}`);
+}
+
 export async function getSubjectReadings(
   subjectId: string,
-  start?: string,
-  end?: string,
-  limit?: number,
+  params: ReadingsFilterParams,
 ): Promise<ReadingsListResponse> {
   const query = new URLSearchParams();
-  if (start) query.set("start", start);
-  if (end) query.set("end", end);
-  if (limit != null) query.set("limit", String(limit));
-  const qs = query.toString();
+  query.set("start", params.start);
+  query.set("end", params.end);
+  if (params.limit != null) query.set("limit", String(params.limit));
   return apiFetch<ReadingsListResponse>(
-    `/v1/subjects/${subjectId}/readings${qs ? `?${qs}` : ""}`,
+    `/v1/subjects/${subjectId}/readings?${query}`,
   );
 }
 
@@ -42,12 +48,13 @@ export async function getLatestReading(
 
 export async function getSubjectEvents(
   subjectId: string,
-  options?: EventFilterParams,
+  params?: EventFilterParams,
 ): Promise<EventsListResponse> {
   const query = new URLSearchParams();
-  if (options?.start) query.set("start", options.start);
-  if (options?.end) query.set("end", options.end);
-  if (options?.event_type) query.set("event_type", options.event_type);
+  if (params?.start) query.set("start", params.start);
+  if (params?.end) query.set("end", params.end);
+  if (params?.event_type) query.set("event_type", params.event_type);
+  if (params?.limit != null) query.set("limit", String(params.limit));
   const qs = query.toString();
   return apiFetch<EventsListResponse>(
     `/v1/subjects/${subjectId}/events${qs ? `?${qs}` : ""}`,
@@ -60,66 +67,26 @@ export async function getSubjectSummary(
   return apiFetch<SubjectSummary>(`/v1/subjects/${subjectId}/summary`);
 }
 
-// ── Officer reads ───────────────────────────────────────────────
+// ── Map ─────────────────────────────────────────────────────────
 
-export async function getAllSubjectsForOfficer(
-  officerId: string,
-): Promise<Subject[]> {
-  return apiFetch<Subject[]>(`/v1/officers/${officerId}/subjects`);
+export async function getMapSubjects(): Promise<MapSubject[]> {
+  return apiFetch<MapSubject[]>("/v1/subjects/map");
 }
 
-export async function getMapSubjects(
-  officerId: string,
-): Promise<MapSubject[]> {
-  return apiFetch<MapSubject[]>(`/v1/map/subjects?officer_id=${officerId}`);
+// ── Alerts ──────────────────────────────────────────────────────
+
+export async function getAlerts(
+  params?: AlertsFilterParams,
+): Promise<AlertItem[]> {
+  const query = new URLSearchParams();
+  if (params?.type) query.set("type", params.type);
+  if (params?.limit != null) query.set("limit", String(params.limit));
+  const qs = query.toString();
+  return apiFetch<AlertItem[]>(`/v1/alerts${qs ? `?${qs}` : ""}`);
 }
 
-// ── Subject writes ──────────────────────────────────────────────
+// ── Me ──────────────────────────────────────────────────────────
 
-export async function createSubject(
-  payload: CreateSubjectPayload,
-): Promise<Subject> {
-  return apiFetch<Subject>("/v1/subjects", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-export async function updateSubjectStatus(
-  subjectId: string,
-  payload: UpdateSubjectStatusPayload,
-): Promise<Subject> {
-  return apiFetch<Subject>(`/v1/subjects/${subjectId}/status`, {
-    method: "PATCH",
-    body: JSON.stringify(payload),
-  });
-}
-
-// ── Officer writes ──────────────────────────────────────────────
-
-export async function createOfficer(
-  payload: CreateOfficerPayload,
-): Promise<Officer> {
-  return apiFetch<Officer>("/v1/officers", {
-    method: "POST",
-    body: JSON.stringify(payload),
-  });
-}
-
-// ── Org settings ────────────────────────────────────────────────
-
-export async function getOrgSettings(
-  orgId: string,
-): Promise<OrgSettings> {
-  return apiFetch<OrgSettings>(`/v1/orgs/${orgId}/settings`);
-}
-
-export async function updateOrgSettings(
-  orgId: string,
-  payload: Partial<Omit<OrgSettings, "id" | "org_id" | "created_at" | "updated_at">>,
-): Promise<OrgSettings> {
-  return apiFetch<OrgSettings>(`/v1/orgs/${orgId}/settings`, {
-    method: "PUT",
-    body: JSON.stringify(payload),
-  });
+export async function getMe(): Promise<{ id: string }> {
+  return apiFetch<{ id: string }>("/v1/me");
 }
