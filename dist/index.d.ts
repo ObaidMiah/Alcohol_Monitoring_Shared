@@ -255,11 +255,13 @@ interface EnrollSubjectPayload {
     programEndDate: string;
     assignedOfficerId: string;
     deviceId: string;
+    cognitoSub?: string;
 }
 interface CreateOfficerPayload {
     name: string;
     email: string;
     badgeNumber: string;
+    cognitoSub?: string;
 }
 interface UpdateDeviceStatusPayload {
     status: "in_repair" | "decommissioned";

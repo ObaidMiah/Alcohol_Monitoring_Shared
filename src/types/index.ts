@@ -325,12 +325,16 @@ export interface EnrollSubjectPayload {
   programEndDate: string;
   assignedOfficerId: string;
   deviceId: string;
+  // Cognito user pool sub. When provided, the API aligns accounts.id to this
+  // value so the user can sign in and resolve their account via jwt.sub.
+  cognitoSub?: string;
 }
 
 export interface CreateOfficerPayload {
   name: string;
   email: string;
   badgeNumber: string;
+  cognitoSub?: string;
 }
 
 export interface UpdateDeviceStatusPayload {
